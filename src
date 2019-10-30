@@ -1,0 +1,381 @@
+#include <IRremote.h>
+//metal detector
+#include <FreqCount.h>
+#include "TM1637Display.h"
+
+//=============PIN LOCATIONS================//
+int RECV_PIN = 24;         //the receiver output pin
+const int TrigPinF = 5;  //front Trigger pin
+const int EchoPinF = 6;  //front Echo pin
+const int TrigPinR = 52;  //right Trigger pin
+const int EchoPinR = 50;   //right Echo pin
+const int LED = 4;       //front LED CHECKER
+const int LED2 = 34;       //right LED CHECKER
+const int LED3 = 39;
+const int motorL1 = 13;    //Motor pins
+const int motorL2 = 11;
+const int motorR1 = 2;
+const int motorR2 = 9;    //pins need to be on 3,5,6,9,10,11 on uno
+                          //2-13 on mega
+
+//if we ever get a third senor for adjustment 
+const int TrigPinR_2 = 23;  //adjustment sensor
+const int EchoPinR_2 =22;   
+ 
+//==========Variables=========================//
+unsigned int value;      //value checkers for the IR receiver
+unsigned int valueL;
+volatile float distance, d2;//values for motor movements
+long duration, duration2;
+volatile float X;
+unsigned long countL=10000000000;
+
+//if we ever get a third senor for adjustment 
+volatile float d3;
+long duration3;
+
+//metal detector
+const int CLK = A2; //Set the CLK pin connection to the display
+const int DIO = A3; //Set the DIO pin connection to the display
+unsigned long countl;
+TM1637Display display(CLK, DIO);  //set up the 4-Digit Display.
+int COUNT=0;//count integer for 0-9 increment
+
+//===========Receiver===================//
+IRrecv irrecv(RECV_PIN);  //Sets the infared to receive on the RECV_PIN
+decode_results results;   //IR decoded value
+//=====================================//
+
+void setup() 
+  {
+    Serial.begin(9600);  // initialize serial communication:
+    irrecv.enableIRIn(); //enables receiver   
+    //=======Pins I/O============//
+    pinMode(EchoPinF, INPUT);
+    pinMode(EchoPinR, INPUT);
+    pinMode(LED, OUTPUT);
+    pinMode(LED2, OUTPUT);
+    pinMode(LED3, OUTPUT);
+    pinMode(TrigPinF, OUTPUT);
+    pinMode(TrigPinR, OUTPUT);
+    pinMode(TrigPinR_2, OUTPUT);
+    pinMode(EchoPinR_2, INPUT);
+    X=255;
+    //===========================//
+    //metal detector
+    FreqCount.begin(1000);
+	display.setBrightness(0x0f);
+  }
+
+void loop() 
+  {
+	//rover
+
+	digitalWrite(LED2, LOW); 
+    digitalWrite(LED3,LOW);
+   
+   //=====IR Off=============================//
+   if(X>0)
+   {
+		X=X-2;
+		delay(10);
+		Stop();
+   }
+   
+   else
+   {
+		X=0;
+		Stop();
+   }
+   
+   Stop();
+   Det();
+    digitalWrite(LED, LOW);
+    digitalWrite(LED2, LOW);
+    if (irrecv.decode(&results)) //if the infared receives 
+      {
+        value = results.value;  //sets value to the received IR vakue
+        valueL= 0;    
+        delay(1000);//sets and resets valueL
+        irrecv.resume();        //ready to receive next value
+      }
+    //=========================================//
+
+    //=====IR ON===============================//
+    while(value!=valueL)        //begins process
+    {
+    Det();
+    
+      //------IR CHECKER---------------------//
+        if (irrecv.decode(&results)) 
+          { 
+            valueL=value;
+            irrecv.resume();
+            delay(1000);
+          }
+      //-------------------------------------//
+      
+      //----MOTOR PROCESS-------------------//
+        checkFrontDistance();
+        
+        if (distance < 15) 
+        { Det();
+            digitalWrite(LED2, LOW);
+            digitalWrite(LED3,LOW);   
+              if (irrecv.decode(&results)) 
+                { 
+                  valueL=value; 
+                  irrecv.resume();
+                  delay(1000);
+                 }
+             if(X>0)
+              { 
+                Stop();
+                delay(10);
+                X=X-7;
+              } 
+             else
+             {
+                    X=0;
+                    Stop();
+                   
+             // Stop();
+              digitalWrite(LED, HIGH);
+              checkRightDistance();
+              if (d2 < 10) 
+                {   
+                  if (irrecv.decode(&results)) 
+                    { 
+                      valueL=value;
+                      irrecv.resume();
+                      delay(1000);
+                    }
+                 digitalWrite(LED2, HIGH);
+                 moveLeft();
+                 delay(1300);
+              }
+            else 
+              {       
+                if (irrecv.decode(&results)) 
+                  { 
+                    valueL=value;
+                    irrecv.resume();
+                  }
+                digitalWrite(LED2, LOW);
+                moveRight();
+                delay(1300);
+              }
+             }
+          }
+             else
+              { Det();
+                if (irrecv.decode(&results)) 
+                { 
+                  valueL=value;
+                  irrecv.resume();
+                  delay(1000);
+                 }
+                 
+                checkRightDistance();
+                checkChecker();
+                digitalWrite(LED, LOW);
+                digitalWrite(LED2, LOW);
+                digitalWrite(LED3,LOW);
+                if (d2<10)
+                { 
+                  if (irrecv.decode(&results)) 
+                  { 
+                  valueL=value;
+                  irrecv.resume();
+                  delay(1000);
+                  }
+                  moveLeft(); 
+                  digitalWrite(LED2, HIGH); 
+
+                }
+                 else if(d2>30)
+                {  
+                  if (irrecv.decode(&results)) 
+                  { 
+                  valueL=value;
+                  irrecv.resume();
+                  delay(1000);
+                  }
+                  if(d3<15)
+                  {
+                  moveRight();
+                   digitalWrite(LED3, HIGH);
+                  }
+                  else if(d3>25)
+                  {
+                  moveLeft();
+                   digitalWrite(LED3, HIGH);
+                  }
+                  else if(d2<40 && d3>30)
+                  {
+                   moveRight();
+                   digitalWrite(LED2, HIGH);
+                  }
+                  else
+                  {
+                    moveForward();
+                  }
+                   
+                }
+                else
+                { 
+                  if (irrecv.decode(&results)) 
+                { 
+                  valueL=value;
+                  irrecv.resume();
+                  delay(1000);
+                 }
+                if(X<200)
+                {
+                X=X+5;
+                }
+                else
+                {
+                  X=200;
+                }
+                moveForward();
+                digitalWrite(LED2, LOW); 
+                digitalWrite(LED3,LOW);
+              
+              }
+              }
+
+        }
+  } 
+
+void checkFrontDistance() 
+{
+  digitalWrite(TrigPinF, LOW);  
+  delayMicroseconds(2);
+  digitalWrite(TrigPinF, HIGH);  
+  delayMicroseconds(5);
+  digitalWrite(TrigPinF, LOW);
+  duration = pulseIn(EchoPinF, HIGH);
+  distance = microsecondsToCentimeters(duration);
+}
+void checkRightDistance() 
+{
+  digitalWrite(TrigPinR, LOW);  
+  delayMicroseconds(2);
+  digitalWrite(TrigPinR, HIGH);  
+  delayMicroseconds(5);
+  digitalWrite(TrigPinR, LOW);
+  duration2 = pulseIn(EchoPinR, HIGH);
+  d2       = microsecondsToCentimeters(duration2);
+}
+
+//if we ever get a third senor for adjustment 
+void checkChecker() 
+{
+  digitalWrite(TrigPinR_2, LOW);  
+  delayMicroseconds(2);
+  digitalWrite(TrigPinR_2, HIGH);  
+  delayMicroseconds(5);
+  digitalWrite(TrigPinR_2, LOW);
+  duration3 = pulseIn(EchoPinR_2, HIGH);
+  d3       = microsecondsToCentimeters(duration3);
+}
+
+long microsecondsToInches(long microseconds) 
+{
+	
+  return microseconds / 74 / 2;
+}
+
+long microsecondsToCentimeters(long microseconds) 
+{
+  // The speed of sound is 340 m/s or 29 microseconds per centimeter.
+  // The ping travels out and back, so to find the distance of the object we
+  // take half of the distance travelled.
+  return microseconds / 29 / 2;
+}
+
+void moveBackward()
+{
+  digitalWrite(motorL1, HIGH); 
+  digitalWrite(motorL2, LOW);
+  digitalWrite(motorR1, HIGH);
+  digitalWrite(motorR2, LOW);
+}
+
+void moveForward() 
+{
+  analogWrite(motorL1, 255);
+  analogWrite(motorL2, 0);
+  analogWrite(motorR1, 0);
+  analogWrite(motorR2, 255); 
+}
+
+void moveLeft() 
+{
+  analogWrite(motorL1, 0);
+  analogWrite(motorL2, 255);
+  analogWrite(motorR1, 0);
+  analogWrite(motorR2, 255);
+}
+
+void moveRight() 
+{
+  analogWriteWrite(motorL1, 255);
+  analogWrite(motorL2, 0);
+  analogWrite(motorR1, 255);
+  analogWrite(motorR2, 0);//thirty_duty_cycle
+}
+
+void Stop()
+{
+  analogWrite(motorL1, 0);
+  analogWrite(motorL2, X);
+  analogWrite(motorR1,X);
+  analogWrite(motorR2,0);
+}
+
+void Det()
+{  
+	if (FreqCount.available())
+	{
+		unsigned long count = FreqCount.read();
+		Serial.println(count);
+
+		if (count >  (countL+100))
+		{ 
+			if(countl<100)
+			{
+				COUNT++;
+				countl=1000000;
+			}
+		else
+		{
+			COUNT=COUNT;
+
+		}
+   
+		}
+
+	else 
+	{
+		countL = count;
+		countl=0;
+		COUNT=COUNT;
+
+	}
+ 
+	float DISP = (COUNT*1000);
+	
+	display.showNumberDec(DISP, true, 4, 0);
+	
+	}
+}
+
+
+
+
+
+
+
+
